@@ -139,31 +139,57 @@ class RNN(object):
                 self.deltaU = del_U
 
 
-        def acc_deltas_bptt(self, x, d, y, s, steps):
-                        '''
-                        accumulate updates for V, W, U
-                        back propagation through time (BPTT)
+	def acc_deltas_bptt(self, x, d, y, s, steps):
+                '''
+                accumulate updates for V, W, U
+                truncated back propagation through time
 
-                        this should not update V, W, U directly. instead, use deltaV, deltaW, deltaU to accumulate updates over time
+                this should not update V, W, U directly. instead, use deltaV, deltaW, deltaU to accumulate updates over time
 
-                        x		list of words, as indices, e.g.: [0, 4, 2]
-                        d		list of words, as indices, e.g.: [4, 2, 3]
-                        y		predicted output layer for x; list of probability vectors, e.g., [[0.3, 0.1, 0.1, 0.5], [0.2, 0.7, 0.05, 0.05] [...]]
-                                        should be part of the return value of predict(x)
-                        s		predicted hidden layer for x; list of vectors, e.g., [[1.2, -2.3, 5.3, 1.0], [-2.1, -1.1, 0.2, 4.2], [...]]
-                                        should be part of the return value of predict(x)
-                        steps	number of time steps to go back in BPTT
+                x	list of words, as indices, e.g.: [0, 4, 2]
+                d	list of words, as indices, e.g.: [4, 2, 3]
+                y	predicted output layer for x; list of probability vectors, e.g., [[0.3, 0.1, 0.1, 0.5], [0.2, 0.7, 0.05, 0.05] [...]]
+                        should be part of the return value of predict(x)
+                s	predicted hidden layer for x; list of vectors, e.g., [[1.2, -2.3, 5.3, 1.0], [-2.1, -1.1, 0.2, 4.2], [...]]
+                        should be part of the return value of predict(x)
 
-                        no return values
-                        '''
-                        for t in reversed(range(len(x))):
-                                der_softmax = (make_onehot(d[t],3) - y[t])
-
-                                der_sigmoid = 
+                no return values
+                '''
 
 
+                del_W = 0
+                del_V = 0
+                del_U = 0
+                del_inputs = 0
+                for t in reversed(range(len(x))):
+                        
+                        der_softmax = (make_onehot(d[t],3) - y[t])
+                        der_sigmoid = (s[t]*(np.ones(s[t].shape) - s[t]))
 
-                                del_W += np.outer(der_softmax, s[t])                        
+
+                        del_inputs = np.dot(self.W.T,der_softmax)*der_sigmoid
+                        del_W += np.outer(der_softmax, s[t])
+                        del_V += np.outer(del_inputs, make_onehot(x[t],3))
+                        del_U += np.outer(del_inputs, s[t-1])
+
+                        del_next_inputs = del_inputs
+
+
+                        for tau in reversed(range((t - steps),t)):
+                                der_sigmoid_tau = (s[tau]*(np.ones(s[tau].shape) - s[tau]))
+                                del_inputs = np.dot(self.U.T, del_next_inputs)*der_sigmoid_tau   
+                                del_next_inputs = del_inputs
+                                del_V += np.outer(del_inputs, make_onehot(x[tau],3))
+                                del_U += np.outer(del_inputs, s[tau-1])
+
+
+                        
+                        
+
+
+                self.deltaW = del_W
+                self.deltaV = del_V
+                self.deltaU = del_U
 
 
 	def compute_loss(self, x, d):
