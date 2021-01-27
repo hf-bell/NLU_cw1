@@ -89,15 +89,82 @@ class RNN(object):
 
 		for t in range(len(x)):
 
-			x_vector = make_onehot(x[t], 3)
-			Vxt = np.dot(self.V, x_vector)
+			Vxt = np.dot(self.V, make_onehot(x[t], 3))
 			Ust_1 = np.dot(self.U, s[t-1])
-			net_in_t = np.add(Vxt, Ust_1)
-			s[t] = sigmoid(net_in_t)
-			net_out_t = np.dot(self.W, s[t])
-			y[t] = softmax(net_out_t)
+			net_in = np.add(Vxt, Ust_1)
+			s[t] = sigmoid(net_in)
+			net_out = np.dot(self.W, s[t])
+			y[t] = softmax(net_out)
 
 		return y, s
+
+
+	def acc_deltas(self, x, d, y, s):
+                '''
+                accumulate updates for V, W, U
+                standard back propagation
+
+                this should not update V, W, U directly. instead, use deltaV, deltaW, deltaU to accumulate updates over time
+
+                x	list of words, as indices, e.g.: [0, 4, 2]
+                d	list of words, as indices, e.g.: [4, 2, 3]
+                y	predicted output layer for x; list of probability vectors, e.g., [[0.3, 0.1, 0.1, 0.5], [0.2, 0.7, 0.05, 0.05] [...]]
+                        should be part of the return value of predict(x)
+                s	predicted hidden layer for x; list of vectors, e.g., [[1.2, -2.3, 5.3, 1.0], [-2.1, -1.1, 0.2, 4.2], [...]]
+                        should be part of the return value of predict(x)
+
+                no return values
+                '''
+
+
+                del_W = 0
+                del_V = 0
+                del_U = 0
+                for t in reversed(range(len(x))):
+                        der_softmax = (make_onehot(d[t],3) - y[t])
+
+                        
+                        der_sigmoid = (s[t]*(np.ones(s[t].shape) - s[t]))
+                        del_inputs = np.dot(self.W.T,der_softmax)*der_sigmoid
+
+
+
+                        
+                        del_W += np.outer(der_softmax, s[t])
+                        del_V += np.outer(del_inputs, make_onehot(x[t],3))
+                        del_U += np.outer(del_inputs, s[t-1])
+
+                self.deltaW = del_W
+                self.deltaV = del_V
+                self.deltaU = del_U
+
+
+        def acc_deltas_bptt(self, x, d, y, s, steps):
+                        '''
+                        accumulate updates for V, W, U
+                        back propagation through time (BPTT)
+
+                        this should not update V, W, U directly. instead, use deltaV, deltaW, deltaU to accumulate updates over time
+
+                        x		list of words, as indices, e.g.: [0, 4, 2]
+                        d		list of words, as indices, e.g.: [4, 2, 3]
+                        y		predicted output layer for x; list of probability vectors, e.g., [[0.3, 0.1, 0.1, 0.5], [0.2, 0.7, 0.05, 0.05] [...]]
+                                        should be part of the return value of predict(x)
+                        s		predicted hidden layer for x; list of vectors, e.g., [[1.2, -2.3, 5.3, 1.0], [-2.1, -1.1, 0.2, 4.2], [...]]
+                                        should be part of the return value of predict(x)
+                        steps	number of time steps to go back in BPTT
+
+                        no return values
+                        '''
+                        for t in reversed(range(len(x))):
+                                der_softmax = (make_onehot(d[t],3) - y[t])
+
+                                der_sigmoid = 
+
+
+
+                                del_W += np.outer(der_softmax, s[t])                        
+
 
 	def compute_loss(self, x, d):
 		'''
@@ -115,69 +182,25 @@ class RNN(object):
 		y_pred, hiddens = self.predict(x)
 		for t_index, t in enumerate(d):
 			d_t_1h = make_onehot(t, 3)
-			t_loss = 0
-			for i in d_t_1h:
-				log_y_hat__j_t = np.log(y_pred[int(t_index)][int(i)])
-				i_loss = log_y_hat__j_t*i
-				t_loss += i_loss
-			t_loss = t_loss * -1
+			t_loss = -np.sum(d_t_1h*np.log(y_pred[int(t_index)]))
 			loss += t_loss
 		return loss
 
 
-#print("d = ", d)
-#print("int i =", int(i))
-#print("y_pred[int(t_index)] =", y_pred[int(t_index)])
-#print("log_y_hat__j_t =", log_y_hat__j_t)
-#print("i_loss =", i_loss)
-#print("t_loss =", t_loss)
-#print("t_loss =", t_loss)
-#print("loss =", loss)
-
-
-#     		    print("y_pred =", y_pred)
-#			    print("t_index, t = ", t_index, t)
-#				print("y_pred[int(t_index)][int(i)] =", y_pred[int(t_index)][int(i)])
-#				print("int(i) =", int(i))
-#				print("i_loss = ", i_loss)
-#	print("np.log2(y_pred[int(t_index)][int(i)] =", np.log2(y_pred[int(t_index)][int(i)]))
-
-
 
 	def compute_mean_loss(self, X, D):
-		'''
-		compute the mean loss between predictions for corpus X and desired outputs in corpus D.
+                mean_loss = 0.
+                N = 0
+                tot_loss = 0
+                for i in range(len(X)):
+                        tot_loss += self.compute_loss(X[i], D[i])
+                        N+= len(D[i]) # Not robust?
+                        print(tot_loss)
 
-		X		corpus of sentences x1, x2, x3, [...], each a list of words as indices.
-		D		corpus of desired outputs d1, d2, d3 [...], each a list of words as indices.
-
-		return mean_loss		average loss over all words in D
-		'''
-
-		mean_loss = 0.
-
-		##########################
-		# --- your code here --- #
-		##########################
-
-		return mean_loss
+                mean_loss = tot_loss/N
+                return mean_loss
 
 
-'''
-
-print("x =", x )
-		print(x[0])
-		print("rangelenx =", range(len(x)))
-	print("t = ", t)
-	print(x[t])
-	print("x_vector =", x_vector)
-	print("self.V = ", self.V)
-	print("Vxt =", Vxt)
-	####GOOD UP TO HERE?
-	print("s =", s)
-	print("Ust_1 = ", Ust_1)
-	print("y = ", y)
-'''
 
 
 

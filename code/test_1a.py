@@ -51,13 +51,34 @@ def predict(x):
         y[t] = softmax(net_out)
     return y,s
 
+##def compute_loss(x, d):
+##    loss = 0.
+##    y_pred, hiddens = predict(x)
+##    #pred = np.where(y_pred == numpy.amax(arr))
+##    #pred = np.amax(y_pred, axis = 1)
+##    
+##    pred = np.argmax(y_pred, axis = 1)
+##    #d_1h = make_onehot(d, 3)
+##    #print(y_pred)
+##    print('Target: {} vs pred: {}'.format(d, pred))
+##    loss = -np.sum(d * np.log(pred + 1e-9))
+##    return loss
+
+
 def compute_loss(x, d):
     loss = 0.
     y_pred, hiddens = predict(x)
-    d_1h = make_onehot(d, 3)
-    print('Target: {} vs pred: {}'.format(d_1h, y_pred))
-    loss = -np.sum(d_1h * np.log(y_pred + 1e-9))
-    return loss
+    for t_index, t in enumerate(d):
+        d_t_1h = make_onehot(t, 3)
+        t_loss = 0.
+        print('Target: {} vs pred: {}'.format(d_t_1h, y_pred[int(t_index)]))
+        for i in d_t_1h:
+            log_y_hat__j_t = np.log(y_pred[int(t_index)][int(i)])
+            i_loss = log_y_hat__j_t*i
+            t_loss += i_loss
+            t_loss = t_loss * -1
+            loss += t_loss
+        return loss
 
 def compute_mean_loss(X, D):
     mean_loss = 0.

@@ -1,4 +1,4 @@
-from rnn import *
+from rnndave1 import *
 import numpy as np
 
 # this will test the implementation of predict, acc_deltas, and acc_deltas_bptt in rnn.py, for a simple 3x2 RNN
