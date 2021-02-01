@@ -132,6 +132,59 @@ class RNN(object):
         self.deltaV = del_V
         self.deltaU = del_U
 
+    def acc_deltas_bptt_np(self, x, d, y, s, steps):
+                '''
+                accumulate updates for V, W, U
+                back propagation through time (BPTT)
+
+                this should not update V, W, U directly. instead, use deltaV, deltaW, deltaU to accumulate updates over time
+                for number prediction task, we do binary prediction, 0 or 1
+
+                x       list of words, as indices, e.g.: [0, 4, 2]
+                d       array with one element, as indices, e.g.: [0] or [1]
+                y               predicted output layer for x; list of probability vectors, e.g., [[0.3, 0.1, 0.1, 0.5], [0.2, 0.7, 0.05, 0.05] [...]]
+                                should be part of the return value of predict(x)
+                s               predicted hidden layer for x; list of vectors, e.g., [[1.2, -2.3, 5.3, 1.0], [-2.1, -1.1, 0.2, 4.2], [...]]
+                                should be part of the return value of predict(x)
+                steps   number of time steps to go back in BPTT
+
+                no return values
+                '''
+
+                del_W = 0
+                del_V = 0
+                del_U = 0
+                del_inputs = 0
+                der_softmax = (make_onehot(int(d),self.out_vocab_size) - y[len(y) - 1])
+                # Not totally sure if {len(s) - steps + 1} is right? Why does it pass test?
+                der_sigmoid = (s[len(s) - steps + 1]*(np.ones(s[len(s) - steps + 1].shape) - s[len(s) - steps + 1]))
+
+
+                del_inputs = np.dot(self.W.T,der_softmax)*der_sigmoid
+
+                
+                self.deltaW = np.outer(der_softmax, s[len(s) - steps + 1])
+                
+
+                        
+
+                del_V += np.outer(del_inputs, make_onehot(x[len(x) - 1],self.out_vocab_size))
+                del_U += np.outer(del_inputs, s[len(s) - steps])
+
+                del_next_inputs = del_inputs
+
+                
+
+                for tau in reversed(range(((len(x)-1) - steps),len(x) - 1)):
+                        der_sigmoid_tau = (s[tau]*(np.ones(s[tau].shape) - s[tau]))
+                        del_inputs = np.dot(self.U.T, del_next_inputs)*der_sigmoid_tau   
+                        del_next_inputs = del_inputs
+                        del_V += np.outer(del_inputs, make_onehot(x[tau],len(y[tau])))
+                        del_U += np.outer(del_inputs, s[tau-1])
+
+                self.deltaV = del_V
+                self.deltaU = del_U
+
     def acc_deltas_bptt(self, x, d, y, s, steps):
         '''
         accumulate updates for V, W, U
@@ -207,6 +260,87 @@ class RNN(object):
 
         mean_loss = tot_loss / N
         return mean_loss
+
+       def compute_loss_np(self, x, d):
+                '''
+                compute the loss between predictions y for x, and desired output d.
+
+                first predicts the output for x using the RNN, then computes the loss w.r.t. d
+
+                x               list of words, as indices, e.g.: [0, 4, 2]
+                d               a word, as indices, e.g.: [0]
+
+                return loss             we only take the prediction from the last time step
+                '''
+
+                loss = 0.
+
+                
+                y_pred, hiddens = self.predict(x)
+                pred = y_pred[len(y_pred) - 1]
+                d_1h = make_onehot(int(d), self.out_vocab_size)
+                loss = -np.sum(d_1h*np.log(pred))
+                return loss
+
+
+        def compute_acc_np(self, x, d):
+                '''
+                compute the accuracy prediction, y[t] compared to the desired output d.
+                first predicts the output for x using the RNN, then computes the loss w.r.t. d
+
+                x               list of words, as indices, e.g.: [0, 4, 2]
+                d               a word class (plural/singular), as index, e.g.: [0] or [1]
+
+                return 1 if argmax(y[t]) == d[0], 0 otherwise
+                '''
+
+
+                y_pred, hiddens = self.predict(x)
+                pred = y_pred[len(y_pred) - 1]
+                pred_max = np.argmax(pred, axis = 0)
+                
+                d_1h = make_onehot(int(d), self.out_vocab_size)
+                d_max = np.argmax(d_1h, axis = 0)
+
+
+                if d_max == pred_max:
+                        return 1
+                else:
+                        return 0
+
+
+        def compare_num_pred(self, x, d):
+                '''
+                compute the probability between predictions the desired output d[0] and it's (re)inflected form, d[1].
+                first predicts the output for x using the RNN, then compare the probability of d[0] and d[1].
+
+                x               list of words, as indices, e.g.: [0, 4, 2]
+                d               the desired verb and its (re)inflected form (singular/plural), as indices, e.g.: [7, 8]
+
+                return 1 if p(d[0]) > p(d[1]), 0 otherwise
+                '''
+
+                y_pred, hiddens = self.predict(x)
+                print(y_pred[(len(y_pred) - 1)][d[0]])
+
+                if y_pred[(len(y_pred) - 1)][d[0]] > y_pred[(len(y_pred) - 1)][d[1]]:
+                        return 1
+                else:
+                        return 0
+                
+
+
+        def compute_acc_lmnp(self, X_dev, D_dev):
+                '''
+
+                DO NOT CHANGE THIS
+
+                X_dev                   a list of input vectors, e.g.,          [[5, 4, 2], [7, 3, 8]]
+                D_dev                   a list of pair verb forms (plural/singular), e.g.,      [[4, 9], [6, 5]]
+                '''
+                acc = sum([self.compare_num_pred(X_dev[i], D_dev[i]) for i in range(len(X_dev))]) / len(X_dev)
+
+                return acc
 
     def train(self, X, D, X_dev, D_dev, epochs=10, learning_rate=0.5, anneal=5, back_steps=0, batch_size=100,
               min_change=0.0001, log=True):
@@ -421,6 +555,50 @@ if __name__ == "__main__":
         adjusted_loss = adjust_loss(mean_loss,fracloss, q)
         
         print("Adjusted for missing vocab: %.03f" % np.exp(adjusted_loss))
+
+    if mode == "train-np":
+                    train_size = 1000
+                    dev_size = 1000
+                    vocab_size = 2000
+
+                    hdim = int(sys.argv[3])
+                    lookback = int(sys.argv[4])
+                    lr = float(sys.argv[5])
+
+                    # get the data set vocabulary
+                    vocab = pd.read_table(data_folder + "/vocab.wiki.txt", header=None, sep="\s+", index_col=0, names=['count', 'freq'], )
+                    num_to_word = dict(enumerate(vocab.index[:vocab_size]))
+                    word_to_num = invert_dict(num_to_word)
+
+                    # calculate loss vocabulary words due to vocab_size
+                    fraction_lost = fraq_loss(vocab, word_to_num, vocab_size)
+                    print("Retained %d words from %d (%.02f%% of all tokens)\n" % (vocab_size, len(vocab), 100*(1-fraction_lost)))
+
+                    # load training data
+                    sents = load_np_dataset(data_folder + '/wiki-train.txt')
+                    S_train = docs_to_indices(sents, word_to_num, 0, 0)
+                    X_train, D_train = seqs_to_npXY(S_train)
+
+                    X_train = X_train[:train_size]
+                    Y_train = D_train[:train_size]
+
+                    # load development data
+                    sents = load_np_dataset(data_folder + '/wiki-dev.txt')
+                    S_dev = docs_to_indices(sents, word_to_num, 0, 0)
+                    X_dev, D_dev = seqs_to_npXY(S_dev)
+
+                    X_dev = X_dev[:dev_size]
+                    D_dev = D_dev[:dev_size]
+
+
+                    r = RNN(vocab_size,hdim,2)
+
+                    r.train_np(X_train, D_train, X_dev, D_dev, learning_rate = lr, back_steps = lookback)
+
+                    acc = 0.
+
+                    print("Accuracy: %.03f" % acc)
+
         
         
        
