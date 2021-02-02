@@ -90,7 +90,7 @@ class RNN(object):
 
                 for t in range(len(x)):
 
-                        Vxt = np.dot(self.V, make_onehot(x[t], self.out_vocab_size))
+                        Vxt = np.dot(self.V, make_onehot(x[t], self.vocab_size))
                         Ust_1 = np.dot(self.U, s[t-1])
                         net_in = np.add(Vxt, Ust_1)
                         s[t] = sigmoid(net_in)
@@ -132,13 +132,51 @@ class RNN(object):
 
                         
                         del_W += np.outer(der_softmax, s[t])
-                        del_V += np.outer(del_inputs, make_onehot(x[t],self.out_vocab_size))
+                        del_V += np.outer(del_inputs, make_onehot(x[t],self.vocab_size))
                         del_U += np.outer(del_inputs, s[t-1])
 
                 self.deltaW = del_W
                 self.deltaV = del_V
                 self.deltaU = del_U
+                
+        def acc_deltas_np(self, x, d, y, s):
+                '''
+                accumulate updates for V, W, U
+                standard back propagation
 
+                this should not update V, W, U directly. instead, use deltaV, deltaW, deltaU to accumulate updates over time
+                for number prediction task, we do binary prediction, 0 or 1
+
+                x       list of words, as indices, e.g.: [0, 4, 2]
+                d       array with one element, as indices, e.g.: [0] or [1]
+                y       predicted output layer for x; list of probability vectors, e.g., [[0.3, 0.1, 0.1, 0.5], [0.2, 0.7, 0.05, 0.05] [...]]
+                        should be part of the return value of predict(x)
+                s       predicted hidden layer for x; list of vectors, e.g., [[1.2, -2.3, 5.3, 1.0], [-2.1, -1.1, 0.2, 4.2], [...]]
+                        should be part of the return value of predict(x)
+
+                no return values
+                '''
+
+                del_W = 0
+                del_V = 0
+                del_U = 0
+
+                der_softmax = (make_onehot(int(d),self.out_vocab_size) - y[len(y) - 1])
+
+                        
+                der_sigmoid = (s[len(y) - 1]*(np.ones(s[len(y) - 1].shape) - s[len(y) - 1]))
+                del_inputs = np.dot(self.W.T,der_softmax)*der_sigmoid
+
+
+
+                
+                del_W += np.outer(der_softmax, s[len(y) - 1])
+                del_V += np.outer(del_inputs, make_onehot(x[len(x) - 1],self.vocab_size))
+                del_U += np.outer(del_inputs, s[len(y) - 1 - 1])
+
+                self.deltaW = del_W
+                self.deltaV = del_V
+                self.deltaU = del_U
 
 
         def acc_deltas_bptt(self, x, d, y, s, steps):
@@ -171,17 +209,23 @@ class RNN(object):
 
                         del_inputs = np.dot(self.W.T,der_softmax)*der_sigmoid
                         del_W += np.outer(der_softmax, s[t])
-                        del_V += np.outer(del_inputs, make_onehot(x[t],self.out_vocab_size))
+                        del_V += np.outer(del_inputs, make_onehot(x[t],self.vocab_size))
                         del_U += np.outer(del_inputs, s[t-1])
 
                         del_next_inputs = del_inputs
 
 
-                        for tau in reversed(range((t - steps),t)):
+                        for tau in reversed(range(t - steps,t)):
+                                if tau < 0:
+                                        continue;
+
+        
+                                        
                                 der_sigmoid_tau = (s[tau]*(np.ones(s[tau].shape) - s[tau]))
                                 del_inputs = np.dot(self.U.T, del_next_inputs)*der_sigmoid_tau   
                                 del_next_inputs = del_inputs
-                                del_V += np.outer(del_inputs, make_onehot(x[tau],self.out_vocab_size))
+                                del_V += np.outer(del_inputs, make_onehot(x[tau],self.vocab_size))
+##                                print("tau: {}, del_V: {}".format(tau, del_V))
                                 del_U += np.outer(del_inputs, s[tau-1])
 
 
@@ -217,31 +261,33 @@ class RNN(object):
                 del_V = 0
                 del_U = 0
                 del_inputs = 0
-                der_softmax = (make_onehot(int(d),self.out_vocab_size) - y[len(y) - 1])
+                der_softmax = (make_onehot(int(d),self.out_vocab_size) - y[len(x) - 1])
                 # Not totally sure if {len(s) - steps + 1} is right? Why does it pass test?
-                der_sigmoid = (s[len(s) - steps + 1]*(np.ones(s[len(s) - steps + 1].shape) - s[len(s) - steps + 1]))
+                der_sigmoid = (s[len(x) - 1]*(np.ones(s[len(x) - 1].shape) - s[len(x) - 1]))
 
 
                 del_inputs = np.dot(self.W.T,der_softmax)*der_sigmoid
 
                 
-                self.deltaW = np.outer(der_softmax, s[len(s) - steps + 1])
+                self.deltaW = np.outer(der_softmax, s[len(x) - 1])
                 
 
                         
 
-                del_V += np.outer(del_inputs, make_onehot(x[len(x) - 1],self.out_vocab_size))
-                del_U += np.outer(del_inputs, s[len(s) - steps])
+                del_V += np.outer(del_inputs, make_onehot(x[len(x) - 1],self.vocab_size))
+                del_U += np.outer(del_inputs, s[len(x) - 2])
 
                 del_next_inputs = del_inputs
 
                 
 
                 for tau in reversed(range(((len(x)-1) - steps),len(x) - 1)):
+                        if tau < 0:
+                                continue;
                         der_sigmoid_tau = (s[tau]*(np.ones(s[tau].shape) - s[tau]))
                         del_inputs = np.dot(self.U.T, del_next_inputs)*der_sigmoid_tau   
                         del_next_inputs = del_inputs
-                        del_V += np.outer(del_inputs, make_onehot(x[tau],len(y[tau])))
+                        del_V += np.outer(del_inputs, make_onehot(x[tau],self.vocab_size))
                         del_U += np.outer(del_inputs, s[tau-1])
 
                 self.deltaV = del_V
@@ -696,12 +742,11 @@ if __name__ == "__main__":
                 X_dev = X_dev[:dev_size]
                 D_dev = D_dev[:dev_size]
 
-
-                r = RNN(vocab_size,hdim,2)
+                acc = 0.
+                
+                r = RNN(vocab_size,hdim,vocab_size)
 
                 r.train_np(X_train, D_train, X_dev, D_dev, learning_rate = lr, back_steps = lookback)
-
-                acc = 0.
 
                 print("Accuracy: %.03f" % acc)
 

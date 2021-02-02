@@ -1,0 +1,5 @@
+LR = 0.5; Steps = 3; HDims = 25: loss: 5.72330465127178; acc: 0.624
+
+LR = 0.5; Steps = 5; HDims = 25: loss: 5.723150153362918; acc: 0.624
+
+LR = 0.5; Steps = 5; HDims = 50: loss was 4.49525029860536, acc 0.57, at epoch 10
